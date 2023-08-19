@@ -1,6 +1,6 @@
 # Backend NopeINC App
 
-Backend utilizado en la aplicación de delivery UDEMY.
+Backend utilizado en la aplicación de NopeINC.
 
 Codigo del backend de la aplicacion.
 
@@ -14,5 +14,3 @@ Para su correcto funcionamiento es necesario instalar lo siguiente:
 *Opcional*
 
 Si deseea probar las peticions http del servidor le recomiendo utilizar Postman en su version 8.4.0.
-
-Este es el enlace de la aplicacion que utiliza este backend: https://github.com/Louys-GA/backend_app_delivery_udemy.git
