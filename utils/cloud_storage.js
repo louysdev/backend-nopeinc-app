@@ -1,74 +1,79 @@
-const { Storage } = require('@google-cloud/storage');
-const { format } = require('util');
-const env = require('../config/env')
-const url = require('url');
-const { v4: uuidv4 } = require('uuid');
-const uuid = uuidv4();
-
-
-const storage = new Storage({
-    projectId: "deliveryapp-proyecto-d4036",
-    keyFilename: './serviceAccountKey.json'
-});
-
-const bucket = storage.bucket("gs://deliveryapp-proyecto-d4036.appspot.com/");
+const supabase = require('../config/supabase');
 
 /**
- * Subir el archivo a Firebase Storage
- * @param {File} file objeto que sera almacenado en Firebase Storage
+ * Subir el archivo a Supabase Storage
+ * @param {File} file objeto que será almacenado en Supabase Storage
+ * @param {String} pathImage ruta donde se guardará la imagen (sin extensión)
+ * @param {String} deletePathImage URL de la imagen a eliminar (opcional)
  */
 module.exports = (file, pathImage, deletePathImage) => {
-    return new Promise((resolve, reject) => {
-        
-        console.log('delete path', deletePathImage)
-        if (deletePathImage) {
+    return new Promise(async (resolve, reject) => {
+        try {
+            // Bucket en Supabase (debes crearlo en tu proyecto: ej. 'products', 'users', etc.)
+            const bucketName = 'images'; // Cambia según tu bucket
 
-            if (deletePathImage != null || deletePathImage != undefined) {
-                const parseDeletePathImage = url.parse(deletePathImage)
-                var ulrDelete = parseDeletePathImage.pathname.slice(23);
-                const fileDelete = bucket.file(`${ulrDelete}`)
+            console.log('delete path', deletePathImage);
 
-                fileDelete.delete().then((imageDelete) => {
-
-                    console.log('se borro la imagen con exito')
-                }).catch(err => {
-                    console.log('Failed to remove photo, error:', err)
-                });
-
-            }
-        }
-
-
-        if (pathImage) {
-            if (pathImage != null || pathImage != undefined) {
-
-                let fileUpload = bucket.file(`${pathImage}`);
-                let stream = fileUpload.createWriteStream();
-                const blobStream = stream.pipe(fileUpload.createWriteStream({
-                    metadata: {
-                        contentType: 'image/png',
-                        metadata: {
-                            firebaseStorageDownloadTokens: uuid,
+            // Eliminar imagen anterior si existe
+            if (deletePathImage) {
+                try {
+                    // Extraer el nombre del archivo de la URL de Supabase
+                    const pathParts = deletePathImage.split(`${bucketName}/`);
+                    
+                    if (pathParts.length > 1) {
+                        const oldFileName = pathParts[1];
+                        
+                        const { error: deleteError } = await supabase.storage
+                            .from(bucketName)
+                            .remove([oldFileName]);
+                        
+                        if (deleteError) {
+                            console.log('Error al eliminar imagen anterior:', deleteError.message);
+                        } else {
+                            console.log('Se borró la imagen con éxito');
                         }
-                    },
-                    resumable: false
-
-                }));
-
-                blobStream.on('error', (error) => {
-                    console.log('Error al subir archivo a firebase', error);
-                    reject('Something is wrong! Unable to upload at the moment.');
-                });
-
-                blobStream.on('finish', () => {
-                    // The public URL can be used to directly access the file via HTTP.
-                    const url = format(`https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${fileUpload.name}?alt=media&token=${uuid}`);
-                    console.log('URL DE CLOUD STORAGE ', url);
-                    resolve(url);
-                });
-
-                blobStream.end(file.buffer);
+                    }
+                } catch (err) {
+                    console.log('Failed to remove photo, error:', err);
+                }
             }
+
+            // Subir nueva imagen
+            if (pathImage) {
+                if (!file) {
+                    return reject('Something is wrong! Unable to upload at the moment.');
+                }
+
+                const fileExt = file.originalname?.split('.').pop() || 'png';
+                const fileName = `${pathImage}.${fileExt}`;
+                
+                const { data, error } = await supabase.storage
+                    .from(bucketName)
+                    .upload(fileName, file.buffer, {
+                        contentType: file.mimetype || 'image/png',
+                        upsert: true // Sobrescribir si ya existe
+                    });
+
+                if (error) {
+                    console.log('Error al subir archivo a Supabase:', error.message);
+                    return reject('Something is wrong! Unable to upload at the moment.');
+                }
+
+                // Obtener URL pública
+                const { data: publicUrlData } = supabase.storage
+                    .from(bucketName)
+                    .getPublicUrl(fileName);
+
+                const url = publicUrlData.publicUrl;
+                console.log('URL DE SUPABASE STORAGE:', url);
+                
+                resolve(url);
+            } else {
+                reject('Path image is required');
+            }
+        } catch (error) {
+            console.log('Error en cloud_storage:', error);
+            reject('Something is wrong! Unable to upload at the moment.');
         }
     });
-}
+};
